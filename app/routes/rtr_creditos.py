@@ -24,7 +24,6 @@ def crear_solicitud(
     """Actividad 13/16 + pre-scoring (act. 4). Crea la solicitud en estado En Evaluación."""
     res = ctl_creditos.crear_solicitud(db, data, creado_por=user.get("sub"))
     if res.get("error"):
-        # 422 cuando el cliente existe pero no es sujeto de crédito; 404 si no existe
         if res.get("elegibilidad"):
             raise HTTPException(status_code=422, detail=res)
         raise HTTPException(status_code=404, detail=res["error"])
@@ -42,10 +41,16 @@ def listar_solicitudes(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Bandeja de trabajo: listado de solicitudes con filtros opcionales (solo lectura)."""
-    rows = rep_solicitudes.listar(db, estado=estado, search=search,
-                                  fec_ini=fec_ini, fec_fin=fec_fin,
-                                  limit=limit, offset=offset)
+    """Bandeja de trabajo: listado de solicitudes con filtros opcionales."""
+    rows = rep_solicitudes.listar(
+        db,
+        estado=estado,
+        search=search,
+        fec_ini=fec_ini,
+        fec_fin=fec_fin,
+        limit=limit,
+        offset=offset
+    )
     return [dict(r._mapping) for r in rows]
 
 
@@ -54,7 +59,7 @@ def resumen_solicitudes(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Contadores de solicitudes por estado (KPIs institucionales, solo lectura)."""
+    """Contadores de solicitudes por estado."""
     rows = rep_solicitudes.resumen(db)
     por_estado = [dict(r._mapping) for r in rows]
     total = sum(r["n"] for r in por_estado)
@@ -81,17 +86,29 @@ def opinion(
     user: dict = Depends(get_current_user),
 ):
     """Actividades 23-36. El permiso depende del tipo de opinión."""
-    accion = {"admin": "opinion_admin",
-              "jefe_reg": "opinion_jefe_reg",
-              "riesgos": "opinion_riesgos"}.get(data.tipo)
+    accion = {
+        "admin": "opinion_admin",
+        "jefe_reg": "opinion_jefe_reg",
+        "riesgos": "opinion_riesgos",
+    }.get(data.tipo)
+
     if not accion or not puede(user.get("rol", ""), accion):
-        raise HTTPException(status_code=403,
-                            detail=f"El rol '{user.get('rol')}' no puede emitir opinión '{data.tipo}'")
+        raise HTTPException(
+            status_code=403,
+            detail=f"El rol '{user.get('rol')}' no puede emitir opinión '{data.tipo}'"
+        )
+
     res = ctl_creditos.registrar_opinion(
-        db, codsolicitud, tipo=data.tipo,
-        favorable=data.favorable, comentario=data.comentario)
+        db,
+        codsolicitud,
+        tipo=data.tipo,
+        favorable=data.favorable,
+        comentario=data.comentario
+    )
+
     if res.get("error"):
         raise HTTPException(status_code=404, detail=res["error"])
+
     return res
 
 
@@ -102,7 +119,7 @@ def enviar_comite(
     db: Session = Depends(get_db),
     user: dict = Depends(requiere_rol("enviar_comite")),
 ):
-    """Actividad 41: presenta la propuesta al Comité (estado En Comité)."""
+    """Actividad 41: presenta la propuesta al Comité."""
     res = ctl_creditos.enviar_a_comite(db, codsolicitud, pkcomite=data.pkcomite)
     if res.get("error"):
         raise HTTPException(status_code=404, detail=res["error"])
@@ -116,10 +133,14 @@ def resolver(
     db: Session = Depends(get_db),
     user: dict = Depends(requiere_rol("resolver_comite")),
 ):
-    """Actividad 42-43: resolución del Comité (aprobado/denegado)."""
+    """Actividad 42-43: resolución del Comité."""
     res = ctl_creditos.resolver(
-        db, codsolicitud, decision=data.decision,
-        motivo=data.motivo, monto_aprobado=data.monto_aprobado)
+        db,
+        codsolicitud,
+        decision=data.decision,
+        motivo=data.motivo,
+        monto_aprobado=data.monto_aprobado
+    )
     if res.get("error"):
         raise HTTPException(status_code=400, detail=res["error"])
     return res
@@ -145,9 +166,14 @@ def registrar_ingresos(
     db: Session = Depends(get_db),
     user: dict = Depends(requiere_rol("crear_solicitud")),
 ):
-    """Actividad 11: el asesor registra una fuente de ingreso del cliente."""
-    res = ctl_creditos.registrar_ingreso(db, codsolicitud, tipo=data.tipo,
-                                         monto=data.monto, nombre_empresa=data.nombre_empresa)
+    """Actividad 11: registra una fuente de ingreso del cliente."""
+    res = ctl_creditos.registrar_ingreso(
+        db,
+        codsolicitud,
+        tipo=data.tipo,
+        monto=data.monto,
+        nombre_empresa=data.nombre_empresa
+    )
     if res.get("error"):
         raise HTTPException(status_code=404, detail=res["error"])
     return res
@@ -160,10 +186,15 @@ def registrar_evaluacion(
     db: Session = Depends(get_db),
     user: dict = Depends(requiere_rol("crear_solicitud")),
 ):
-    """Actividad 16: el asesor registra la evaluación (cabecera + detalle ME/CO)."""
-    res = ctl_creditos.registrar_evaluacion(db, codsolicitud, ingreso=data.ingreso,
-                                            gasto_familiar=data.gasto_familiar,
-                                            fortaleza=data.fortaleza, debilidad=data.debilidad)
+    """Actividad 16: registra la evaluación."""
+    res = ctl_creditos.registrar_evaluacion(
+        db,
+        codsolicitud,
+        ingreso=data.ingreso,
+        gasto_familiar=data.gasto_familiar,
+        fortaleza=data.fortaleza,
+        debilidad=data.debilidad
+    )
     if res.get("error"):
         raise HTTPException(status_code=404, detail=res["error"])
     return res
@@ -175,7 +206,7 @@ def desembolsar(
     db: Session = Depends(get_db),
     user: dict = Depends(requiere_rol("resolver_comite")),
 ):
-    """Actividades 45-48: desembolsa una solicitud aprobada (crea cuenta + movimiento)."""
+    """Desembolsa una solicitud aprobada."""
     res = ctl_creditos.desembolsar(db, codsolicitud)
     if res.get("error"):
         raise HTTPException(status_code=400, detail=res["error"])
@@ -189,48 +220,65 @@ def productos_disponibles(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """
-    Tipos de crédito disponibles para que el frontend los liste dinámicamente.
-    Devuelve los códigos funcionales (ME/PE/CO) agrupados por segmento
-    (Empresarial / Consumo). Si en el futuro cambia dproducto, esto se refleja solo.
-    """
     rows = rep_creditos.get_productos_disponibles(db)
     items = []
+
     for r in rows:
         cod = rep_creditos.map_tipo_func(r.codtipocredito)
         items.append({
-            "codtipocredito": cod,                       # ME | PE | CO
+            "codtipocredito": cod,
             "descripcion": (r.destipocredito or "").strip(),
-            "segmento": rep_creditos.segmento_de(cod),    # EMPRESARIAL | CONSUMO
+            "segmento": rep_creditos.segmento_de(cod),
         })
-    # agrupado por segmento para conveniencia del front
+
     segmentos = {}
     for it in items:
         segmentos.setdefault(it["segmento"], []).append(it)
+
     return {"productos": items, "por_segmento": segmentos}
 
 
-# ───────────────────────── Consultas de cartera (existentes) ─────────────────
+# ───────────────────────── Consultas de cartera ──────────────────────────────
+# Protección IDOR:
+# - Todas estas rutas requieren JWT.
+# - Si el usuario es asesor, solo puede consultar su propia cartera.
 
 @router.get("/cartera")
 def cartera(
     pkasesor: int = Query(..., description="PK del asesor autenticado"),
     periodomes: int = Query(202512),
     db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
 ):
+    if user.get("rol") == "asesor" and user.get("pkasesor") != pkasesor:
+        raise HTTPException(
+            status_code=403,
+            detail="No puede consultar la cartera de otro asesor"
+        )
+
     rows = rep_creditos.get_cartera_asesor(db, pkasesor, periodomes)
     return [dict(r._mapping) for r in rows]
 
 
 @router.get("/{codcuentacredito}")
-def detalle(codcuentacredito: str, db: Session = Depends(get_db)):
+def detalle(
+    codcuentacredito: str,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     row = rep_creditos.get_detalle(db, codcuentacredito)
+
     if not row:
         raise HTTPException(status_code=404, detail="Crédito no encontrado")
+
     return dict(row._mapping)
 
 
 @router.get("/{codcuentacredito}/cronograma")
-def cronograma(codcuentacredito: str, db: Session = Depends(get_db)):
+def cronograma(
+    codcuentacredito: str,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
     rows = rep_creditos.get_cronograma(db, codcuentacredito)
     return [dict(r._mapping) for r in rows]

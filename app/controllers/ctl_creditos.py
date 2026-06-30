@@ -272,7 +272,8 @@ def generar_cronograma(db: Session, codsolicitud: str) -> dict:
     monto = float(sol.montoaprobadocredito or sol.montosolicitudcredito or 0)
     plazo = int(sol.plazosolicitudcredito or sol.nrocuotasolicitud or 12)
     tea = ctl_scoring.TEA_POR_TIPO.get(
-        (sol.codtiposolicitud or "CO"), {"mid": 40.0}
+        (sol.codtiposolicitud or "ME"),
+        {"mid": 72.53}
     )["mid"]
     tem = (1 + tea / 100) ** (1 / 12) - 1
     cuota = monto * tem * (1 + tem) ** plazo / ((1 + tem) ** plazo - 1) if tem > 0 else monto / plazo
